@@ -1,0 +1,33 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "K1.VectorDB.Engine", "K1.VectorDB.Engine\K1.VectorDB.Engine.csproj", "{15B3A6D1-34B2-451F-AD20-CE2B2F3529F6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "K1.VectorDB.Engine.Tests", "K1.VectorDB.Engine.Tests\K1.VectorDB.Engine.Tests.csproj", "{DD110391-7DE3-490F-BBF7-BC0EC86FA2A7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "K1.VectorDB.Debug.CLI", "K1.VectorDB.Debug.CLI\K1.VectorDB.Debug.CLI.csproj", "{FB828728-80A7-4F20-AEEE-E04CF35738C7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Debug", "Debug", "{DE635D88-4F94-431A-A4BE-A0ED41CFCFF8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{15B3A6D1-34B2-451F-AD20-CE2B2F3529F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15B3A6D1-34B2-451F-AD20-CE2B2F3529F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15B3A6D1-34B2-451F-AD20-CE2B2F3529F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15B3A6D1-34B2-451F-AD20-CE2B2F3529F6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DD110391-7DE3-490F-BBF7-BC0EC86FA2A7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD110391-7DE3-490F-BBF7-BC0EC86FA2A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DD110391-7DE3-490F-BBF7-BC0EC86FA2A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DD110391-7DE3-490F-BBF7-BC0EC86FA2A7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FB828728-80A7-4F20-AEEE-E04CF35738C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FB828728-80A7-4F20-AEEE-E04CF35738C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FB828728-80A7-4F20-AEEE-E04CF35738C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FB828728-80A7-4F20-AEEE-E04CF35738C7}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{FB828728-80A7-4F20-AEEE-E04CF35738C7} = {DE635D88-4F94-431A-A4BE-A0ED41CFCFF8}
+	EndGlobalSection
+EndGlobal
