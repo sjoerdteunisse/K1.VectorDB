@@ -17,7 +17,7 @@ public class BasicUsageTests
         if (Directory.Exists("TestDatabase")) Directory.Delete("TestDatabase", true);
     }
     
-    [Test]
+    [Test, Category("E2E")]
     public void EdgeCases_ComprehensiveTest()
     {
         var db = new VectorDb(new LMStudioEmbedder() {   Model = ""}, "EdgeCaseTestDb");
@@ -62,7 +62,7 @@ public class BasicUsageTests
         Assert.Pass();
     }
 
-    [Test]
+    [Test, Category("E2E")]
     public void BasicUsage()
     {
         var Db = new VectorDb(new LMStudioEmbedder(), "TestDatabase");

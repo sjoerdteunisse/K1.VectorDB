@@ -17,7 +17,7 @@ public class ProcessorTests
         if (Directory.Exists("TestDatabase")) Directory.Delete("TestDatabase", true);
     }
 
-    [Test]
+    [Test, Category("E2E")]
     public void PreprocessorTest()
     {
         var DB = new VectorDb(new LMStudioEmbedder(), "TestDatabase");
@@ -58,7 +58,7 @@ public class ProcessorTests
         Assert.Pass();
     }
 
-    [Test]
+    [Test, Category("E2E")]
     public void PostprocessorTest()
     {
         var DB = new VectorDb(new LMStudioEmbedder(), "TestDatabase");
