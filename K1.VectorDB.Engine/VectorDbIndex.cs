@@ -19,46 +19,32 @@ internal class VectorDbIndex(string name)
 
     private List<double[]> vectors = new();
 
-    public async void Save(string path)
+    public void Save(string path)
     {
-        try
-        {
-            if (_fileValid) return;
-            var savepath = Path.Combine(path, Name);
-            if (!Directory.Exists(savepath)) Directory.CreateDirectory(savepath);
+        if (_fileValid) return;
+        var savepath = Path.Combine(path, Name);
+        if (!Directory.Exists(savepath)) Directory.CreateDirectory(savepath);
 
-            var vectorsBytes = MessagePackSerializer.Serialize(vectors);
-            var vectorsToken = File.WriteAllBytesAsync(Path.Combine(savepath, "vectors.bin"), vectorsBytes);
+        var vectorsBytes = MessagePackSerializer.Serialize(vectors, options);
+        File.WriteAllBytes(Path.Combine(savepath, "vectors.bin"), vectorsBytes);
 
-            var documentsBytes = MessagePackSerializer.Serialize(_documents);
-            var documentsToken = File.WriteAllBytesAsync(Path.Combine(savepath, "documents.bin"), documentsBytes);
+        var documentsBytes = MessagePackSerializer.Serialize(_documents, options);
+        File.WriteAllBytes(Path.Combine(savepath, "documents.bin"), documentsBytes);
 
-            await vectorsToken;
-            await documentsToken;
-
-            _fileValid = true;
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine("Error saving VectorDbIndex: " + e.Message);
-            throw; 
-        }
+        _fileValid = true;
     }
 
-    public async void Load(string path)
+    public void Load(string path)
     {
         var loadpath = Path.Combine(path, Name);
 
         if (!Directory.Exists(loadpath)) throw new DirectoryNotFoundException($"Directory {loadpath} not found.");
 
-        var vectorsToken = File.ReadAllBytesAsync(Path.Combine(loadpath, "vectors.bin"));
-        var documentsToken = File.ReadAllBytesAsync(Path.Combine(loadpath, "documents.bin"));
+        var vectorsBytes = File.ReadAllBytes(Path.Combine(loadpath, "vectors.bin"));
+        vectors = MessagePackSerializer.Deserialize<List<double[]>>(vectorsBytes, options);
 
-        await vectorsToken;
-        vectors = MessagePackSerializer.Deserialize<List<double[]>>(vectorsToken.Result, options);
-
-        await documentsToken;
-        _documents = MessagePackSerializer.Deserialize<List<VectorDbDocument>>(documentsToken.Result, options);
+        var docsBytes = File.ReadAllBytes(Path.Combine(loadpath, "documents.bin"));
+        _documents = MessagePackSerializer.Deserialize<List<VectorDbDocument>>(docsBytes, options);
 
         _fileValid = true;
     }
