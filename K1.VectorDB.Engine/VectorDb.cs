@@ -172,6 +172,31 @@ public class VectorDb
         return true;
     }
 
+    public bool IndexDocument(string indexName, string content, string id)
+    {
+        if (!_indexes.TryGetValue(indexName, out var index)) return false;
+        var doc = new VectorDbDocument(id, content);
+        var vector = _embedder.GetVector(content);
+        index.Add(vector, doc);
+        return true;
+    }
+
+    public bool DeleteDocument(string id)
+    {
+        var deleted = false;
+        foreach (var index in _indexes.Values)
+            if (index.Remove(id)) deleted = true;
+        return deleted;
+    }
+
+    public VectorDbQueryResult QueryCosineSimilarity(string query, string indexName, int topK = 5)
+    {
+        if (!_indexes.TryGetValue(indexName, out var index))
+            return new VectorDbQueryResult([], []);
+        var vector = _embedder.GetVector(query);
+        return index.QueryCosineSimilarity(vector, topK);
+    }
+
     public bool DeleteDocument(double[] vector)
     {
         var success = false;

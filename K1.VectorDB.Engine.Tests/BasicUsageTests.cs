@@ -20,7 +20,7 @@ public class BasicUsageTests
     [Test]
     public void EdgeCases_ComprehensiveTest()
     {
-        var db = new VectorDb(new LMStudioEmbedder(), "EdgeCaseTestDb");
+        var db = new VectorDb(new LMStudioEmbedder() {   Model = ""}, "EdgeCaseTestDb");
         db.CreateIndex("TestIndex");
 
         var emptyResult = db.QueryCosineSimilarity("test", 5);

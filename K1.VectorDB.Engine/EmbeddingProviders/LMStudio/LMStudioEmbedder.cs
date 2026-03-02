@@ -6,7 +6,7 @@ namespace K1.VectorDB.Engine.EmbeddingProviders.LMStudio;
 public class LMStudioEmbedder : IEmbedder
 {
     public string URL { get; set; } = "http://localhost:1234/v1/embeddings";
-    public string Model { get; set; }
+    public string Model { get; set; } = "text-embedding-qwen3-embedding-0.6b";
 
 
     public double[] GetVector(string document)

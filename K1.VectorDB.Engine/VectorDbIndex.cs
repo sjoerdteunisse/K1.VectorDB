@@ -61,6 +61,17 @@ internal class VectorDbIndex(string name)
         ResetCaches();
     }
 
+    public bool Remove(string documentId)
+    {
+        var index = _documents.FindIndex(d => d.Id == documentId);
+        if (index == -1) return false;
+
+        vectors.RemoveAt(index);
+        _documents.RemoveAt(index);
+        ResetCaches();
+        return true;
+    }
+
     public void Remove(VectorDbDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
