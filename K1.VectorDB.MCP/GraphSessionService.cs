@@ -1,5 +1,9 @@
+using K1.VectorDB.Engine.EmbeddingProviders;
 using K1.VectorDB.Engine.EmbeddingProviders.LMStudio;
 using K1.VectorDB.Graph;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("K1.VectorDB.MCP.Tests")]
 
 namespace K1.VectorDB.MCP;
 
@@ -23,13 +27,7 @@ public sealed class GraphSessionService
     public MultiLayerGraph Initialize(string path, string lmStudioUrl, string model)
     {
         var embedder = new LMStudioEmbedder { URL = lmStudioUrl, Model = model };
-        _graph = new MultiLayerGraph(embedder, path);
-
-        foreach (var (name, desc) in StandardLayers.All)
-            _graph.AddLayer(name, desc);
-
-        _graph.Save();
-        return _graph;
+        return InitializeCore(path, embedder);
     }
 
     /// <summary>
@@ -38,9 +36,7 @@ public sealed class GraphSessionService
     public MultiLayerGraph Load(string path, string lmStudioUrl, string model)
     {
         var embedder = new LMStudioEmbedder { URL = lmStudioUrl, Model = model };
-        _graph = new MultiLayerGraph(embedder, path);
-        _graph.Load();
-        return _graph;
+        return LoadCore(path, embedder);
     }
 
     /// <summary>
@@ -55,6 +51,41 @@ public sealed class GraphSessionService
                 string.Join(", ", Graph.Layers.Select(l => l.Name)));
 
         return layer.Id;
+    }
+
+    // ── Internal test seam ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Initialize with an explicit embedder. Visible to the test assembly so tests can
+    /// supply a <see cref="FakeEmbedder"/> without requiring a live LM Studio instance.
+    /// </summary>
+    internal MultiLayerGraph InitializeWithEmbedder(string path, IEmbedder embedder) =>
+        InitializeCore(path, embedder);
+
+    /// <summary>
+    /// Load with an explicit embedder (test seam).
+    /// </summary>
+    internal MultiLayerGraph LoadWithEmbedder(string path, IEmbedder embedder) =>
+        LoadCore(path, embedder);
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private MultiLayerGraph InitializeCore(string path, IEmbedder embedder)
+    {
+        _graph = new MultiLayerGraph(embedder, path);
+
+        foreach (var (name, desc) in StandardLayers.All)
+            _graph.AddLayer(name, desc);
+
+        _graph.Save();
+        return _graph;
+    }
+
+    private MultiLayerGraph LoadCore(string path, IEmbedder embedder)
+    {
+        _graph = new MultiLayerGraph(embedder, path);
+        _graph.Load();
+        return _graph;
     }
 }
 
