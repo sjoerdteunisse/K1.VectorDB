@@ -12,6 +12,7 @@
     <PackageReference Include="ModelContextProtocol" Version="1.0.0" />
     <!-- Hosting / DI infrastructure -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.5" />
+    <PackageReference Include="ModelContextProtocol.Core" Version="1.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\K1.VectorDB.Graph\K1.VectorDB.Graph.csproj" />

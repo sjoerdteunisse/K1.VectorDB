@@ -5,7 +5,7 @@ namespace K1.VectorDB.MCP.Tests;
 /// <see cref="FakeEmbedder"/> for each test. Derived test fixtures inherit the
 /// pre-initialized session and a unique, cleaned-up temp directory.
 /// </summary>
-internal abstract class McpTestBase
+public abstract class McpTestBase
 {
     protected string TestPath = null!;
     protected GraphSessionService Session = null!;
