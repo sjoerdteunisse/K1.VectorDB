@@ -1,4 +1,5 @@
 using K1.VectorDB.Engine.EmbeddingProviders;
+using K1.VectorDB.Engine.Helpers;
 
 namespace K1.VectorDB.Engine.Tests;
 
@@ -262,5 +263,148 @@ public class PersistenceTests
         var result = loaded.QueryCosineSimilarity("dogs", 10);
         Assert.That(result.Documents.Count, Is.EqualTo(2),
             "A loaded database must accept new documents normally");
+    }
+
+    // ── Checksum & error handling ─────────────────────────────────────────────
+
+    [Test]
+    public void Save_VectorsBinContainsChecksumHeader()
+    {
+        var db = new VectorDb(MockEmbedder(), DbPath);
+        db.CreateIndex("Animals");
+        db.IndexDocument("Animals", "dogs");
+        db.Save();
+
+        // The file must be at least 32 bytes (SHA-256 header) + 1 byte of payload.
+        var fileSize = new FileInfo(Path.Combine(DbPath, "Animals", "vectors.bin")).Length;
+        Assert.That(fileSize, Is.GreaterThan(32),
+            "vectors.bin must include a 32-byte SHA-256 checksum header");
+    }
+
+    [Test]
+    public void Save_DocumentsBinContainsChecksumHeader()
+    {
+        var db = new VectorDb(MockEmbedder(), DbPath);
+        db.CreateIndex("Animals");
+        db.IndexDocument("Animals", "dogs");
+        db.Save();
+
+        var fileSize = new FileInfo(Path.Combine(DbPath, "Animals", "documents.bin")).Length;
+        Assert.That(fileSize, Is.GreaterThan(32),
+            "documents.bin must include a 32-byte SHA-256 checksum header");
+    }
+
+    [Test]
+    public void Load_CorruptedVectorsBin_ThrowsInvalidDataException()
+    {
+        var db = new VectorDb(MockEmbedder(), DbPath);
+        db.CreateIndex("Animals");
+        db.IndexDocument("Animals", "dogs");
+        db.Save();
+
+        // Flip a byte in the payload area (after the 32-byte checksum header).
+        var path = Path.Combine(DbPath, "Animals", "vectors.bin");
+        var bytes = File.ReadAllBytes(path);
+        bytes[32] ^= 0xFF; // corrupt first payload byte
+        File.WriteAllBytes(path, bytes);
+
+        var loaded = new VectorDb(MockEmbedder(), DbPath);
+        Assert.Throws<InvalidDataException>(() => loaded.Load(),
+            "Loading a file with a corrupted payload must throw InvalidDataException");
+    }
+
+    [Test]
+    public void Load_CorruptedDocumentsBin_ThrowsInvalidDataException()
+    {
+        var db = new VectorDb(MockEmbedder(), DbPath);
+        db.CreateIndex("Animals");
+        db.IndexDocument("Animals", "dogs");
+        db.Save();
+
+        var path = Path.Combine(DbPath, "Animals", "documents.bin");
+        var bytes = File.ReadAllBytes(path);
+        bytes[32] ^= 0xFF;
+        File.WriteAllBytes(path, bytes);
+
+        var loaded = new VectorDb(MockEmbedder(), DbPath);
+        Assert.Throws<InvalidDataException>(() => loaded.Load(),
+            "Loading a file with a corrupted documents payload must throw InvalidDataException");
+    }
+
+    [Test]
+    public void Load_TruncatedVectorsBin_ThrowsInvalidDataException()
+    {
+        var db = new VectorDb(MockEmbedder(), DbPath);
+        db.CreateIndex("Animals");
+        db.IndexDocument("Animals", "dogs");
+        db.Save();
+
+        // Truncate the file to fewer than 32 bytes (no room for a checksum header).
+        var path = Path.Combine(DbPath, "Animals", "vectors.bin");
+        File.WriteAllBytes(path, [0x01, 0x02, 0x03]);
+
+        var loaded = new VectorDb(MockEmbedder(), DbPath);
+        Assert.Throws<InvalidDataException>(() => loaded.Load(),
+            "A truncated file with no valid checksum header must throw InvalidDataException");
+    }
+
+    [Test]
+    public void Load_MissingIndexDirectory_ThrowsDirectoryNotFoundException()
+    {
+        // Write a valid index list that references a non-existent sub-directory.
+        Directory.CreateDirectory(DbPath);
+        File.WriteAllText(Path.Combine(DbPath, "indexs.txt"), "Ghost\n");
+
+        var loaded = new VectorDb(MockEmbedder(), DbPath);
+        Assert.Throws<DirectoryNotFoundException>(() => loaded.Load(),
+            "Referencing a missing index directory must throw DirectoryNotFoundException");
+    }
+
+    [Test]
+    public void Load_MissingIndexListFile_ThrowsFileNotFoundException()
+    {
+        // DatabasePath exists but indexs.txt does not.
+        Directory.CreateDirectory(DbPath);
+
+        var loaded = new VectorDb(MockEmbedder(), DbPath);
+        Assert.Throws<FileNotFoundException>(() => loaded.Load(),
+            "Calling Load() without a prior Save() must throw FileNotFoundException");
+    }
+
+    [Test]
+    public void DataFileHelper_WriteAndRead_RoundTrip()
+    {
+        Directory.CreateDirectory(DbPath);
+        var path = Path.Combine(DbPath, "test.bin");
+        var payload = new byte[] { 1, 2, 3, 4, 5 };
+
+        DataFileHelper.WriteWithChecksum(path, payload);
+        var result = DataFileHelper.ReadAndVerifyChecksum(path);
+
+        Assert.That(result, Is.EqualTo(payload), "Round-tripped payload must match the original");
+    }
+
+    [Test]
+    public void DataFileHelper_TamperedChecksum_ThrowsInvalidDataException()
+    {
+        Directory.CreateDirectory(DbPath);
+        var path = Path.Combine(DbPath, "tampered.bin");
+        DataFileHelper.WriteWithChecksum(path, [10, 20, 30]);
+
+        // Zero out the stored checksum so it no longer matches the payload.
+        var bytes = File.ReadAllBytes(path);
+        for (var i = 0; i < 32; i++) bytes[i] = 0;
+        File.WriteAllBytes(path, bytes);
+
+        Assert.Throws<InvalidDataException>(() => DataFileHelper.ReadAndVerifyChecksum(path),
+            "A tampered checksum must be detected and throw InvalidDataException");
+    }
+
+    [Test]
+    public void DataFileHelper_MissingFile_ThrowsFileNotFoundException()
+    {
+        var path = Path.Combine(DbPath, "nonexistent.bin");
+        Assert.Throws<FileNotFoundException>(() => DataFileHelper.ReadAndVerifyChecksum(path),
+            "Reading a non-existent file must throw FileNotFoundException");
     }
 }

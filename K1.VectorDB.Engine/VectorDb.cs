@@ -217,16 +217,24 @@ public class VectorDb
 
     public void Save()
     {
-        if (!Directory.Exists(DatabasePath)) Directory.CreateDirectory(DatabasePath);
-        var indexfile = Path.Combine(DatabasePath, "indexs.txt");
-        var sw = new StreamWriter(indexfile, false);
-        foreach (var index in _indexes)
+        try
         {
-            sw.WriteLine(index.Value.Name);
-            index.Value.Save(DatabasePath);
-        }
+            if (!Directory.Exists(DatabasePath)) Directory.CreateDirectory(DatabasePath);
 
-        sw.Close();
+            var indexfile = Path.Combine(DatabasePath, "indexs.txt");
+            using (var sw = new StreamWriter(indexfile, append: false))
+            {
+                foreach (var index in _indexes)
+                {
+                    sw.WriteLine(index.Value.Name);
+                    index.Value.Save(DatabasePath);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not IOException)
+        {
+            throw new IOException($"Failed to save database to '{DatabasePath}': {ex.Message}", ex);
+        }
 
         Console.WriteLine("Index Usage:");
         foreach (var key in _indexes.Keys) Console.Write($"{_indexes[key].Count,4}");
@@ -236,20 +244,30 @@ public class VectorDb
     public void Load()
     {
         var indexfile = Path.Combine(DatabasePath, "indexs.txt");
-        var sr = new StreamReader(indexfile);
-        while (!sr.EndOfStream)
-        {
-            var line = sr.ReadLine();
-            if (line is null) continue;
-            var index = new VectorDbIndex(line);
-            index.Load(DatabasePath);
-            if (!_indexes.ContainsKey(index.Name))
-                _indexes.Add(index.Name, index);
-            else
-                _indexes[index.Name] = index;
-        }
 
-        sr.Close();
+        if (!File.Exists(indexfile))
+            throw new FileNotFoundException(
+                $"Database index file not found at '{indexfile}'. Has the database been saved?", indexfile);
+
+        try
+        {
+            using var sr = new StreamReader(indexfile);
+            while (!sr.EndOfStream)
+            {
+                var line = sr.ReadLine();
+                if (line is null) continue;
+                var index = new VectorDbIndex(line);
+                index.Load(DatabasePath);
+                if (!_indexes.ContainsKey(index.Name))
+                    _indexes.Add(index.Name, index);
+                else
+                    _indexes[index.Name] = index;
+            }
+        }
+        catch (Exception ex) when (ex is not IOException and not InvalidDataException and not FileNotFoundException and not DirectoryNotFoundException)
+        {
+            throw new IOException($"Failed to load database from '{DatabasePath}': {ex.Message}", ex);
+        }
     }
 
     public VectorDbQueryResult QueryCosineSimilarity(string query, int topK = 5)

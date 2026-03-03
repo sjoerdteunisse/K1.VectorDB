@@ -1,4 +1,5 @@
 using K1.VectorDB.Engine;
+using K1.VectorDB.Engine.Helpers;
 using K1.VectorDB.Graph.Persistence;
 using MessagePack;
 
@@ -22,19 +23,26 @@ internal sealed class GraphPersistenceService
 
     internal void Save()
     {
-        if (!Directory.Exists(_path)) Directory.CreateDirectory(_path);
-
-        var state = new GraphState
+        try
         {
-            Layers = [.. _store.Layers],
-            Nodes = [.. _store.Nodes.Values],
-            Edges = [.. _store.Edges.Values]
-        };
+            if (!Directory.Exists(_path)) Directory.CreateDirectory(_path);
 
-        var bytes = MessagePackSerializer.Serialize(state, _mpOptions);
-        File.WriteAllBytes(Path.Combine(_path, "graph_state.bin"), bytes);
+            var state = new GraphState
+            {
+                Layers = [.. _store.Layers],
+                Nodes = [.. _store.Nodes.Values],
+                Edges = [.. _store.Edges.Values]
+            };
 
-        _vectorDb.Save();
+            var bytes = MessagePackSerializer.Serialize(state, _mpOptions);
+            DataFileHelper.WriteWithChecksum(Path.Combine(_path, "graph_state.bin"), bytes);
+
+            _vectorDb.Save();
+        }
+        catch (Exception ex) when (ex is not IOException and not InvalidDataException)
+        {
+            throw new IOException($"Failed to save graph state to '{_path}': {ex.Message}", ex);
+        }
     }
 
     internal void Load()
@@ -42,8 +50,20 @@ internal sealed class GraphPersistenceService
         var statePath = Path.Combine(_path, "graph_state.bin");
         if (!File.Exists(statePath)) return;
 
-        var bytes = File.ReadAllBytes(statePath);
-        var state = MessagePackSerializer.Deserialize<GraphState>(bytes, _mpOptions);
+        GraphState state;
+        try
+        {
+            var bytes = DataFileHelper.ReadAndVerifyChecksum(statePath);
+            state = MessagePackSerializer.Deserialize<GraphState>(bytes, _mpOptions);
+        }
+        catch (InvalidDataException)
+        {
+            throw; // Propagate checksum / corruption errors as-is.
+        }
+        catch (Exception ex)
+        {
+            throw new IOException($"Failed to load graph state from '{statePath}': {ex.Message}", ex);
+        }
 
         _store.Layers.Clear();
         _store.Nodes.Clear();
