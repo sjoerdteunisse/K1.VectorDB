@@ -23,13 +23,21 @@ internal class VectorDbIndex(string name)
     {
         if (_fileValid) return;
         var savepath = Path.Combine(path, Name);
-        if (!Directory.Exists(savepath)) Directory.CreateDirectory(savepath);
 
-        var vectorsBytes = MessagePackSerializer.Serialize(vectors, options);
-        File.WriteAllBytes(Path.Combine(savepath, "vectors.bin"), vectorsBytes);
+        try
+        {
+            if (!Directory.Exists(savepath)) Directory.CreateDirectory(savepath);
 
-        var documentsBytes = MessagePackSerializer.Serialize(_documents, options);
-        File.WriteAllBytes(Path.Combine(savepath, "documents.bin"), documentsBytes);
+            var vectorsBytes = MessagePackSerializer.Serialize(vectors, options);
+            DataFileHelper.WriteWithChecksum(Path.Combine(savepath, "vectors.bin"), vectorsBytes);
+
+            var documentsBytes = MessagePackSerializer.Serialize(_documents, options);
+            DataFileHelper.WriteWithChecksum(Path.Combine(savepath, "documents.bin"), documentsBytes);
+        }
+        catch (Exception ex) when (ex is not IOException)
+        {
+            throw new IOException($"Failed to save index '{Name}' to '{savepath}': {ex.Message}", ex);
+        }
 
         _fileValid = true;
     }
@@ -38,14 +46,46 @@ internal class VectorDbIndex(string name)
     {
         var loadpath = Path.Combine(path, Name);
 
-        if (!Directory.Exists(loadpath)) throw new DirectoryNotFoundException($"Directory {loadpath} not found.");
+        if (!Directory.Exists(loadpath))
+            throw new DirectoryNotFoundException($"Index directory not found: '{loadpath}'.");
 
-        var vectorsBytes = File.ReadAllBytes(Path.Combine(loadpath, "vectors.bin"));
-        vectors = MessagePackSerializer.Deserialize<List<double[]>>(vectorsBytes, options);
+        List<double[]> loadedVectors;
+        List<VectorDbDocument> loadedDocuments;
 
-        var docsBytes = File.ReadAllBytes(Path.Combine(loadpath, "documents.bin"));
-        _documents = MessagePackSerializer.Deserialize<List<VectorDbDocument>>(docsBytes, options);
+        try
+        {
+            var vectorsBytes = DataFileHelper.ReadAndVerifyChecksum(Path.Combine(loadpath, "vectors.bin"));
+            loadedVectors = MessagePackSerializer.Deserialize<List<double[]>>(vectorsBytes, options);
+        }
+        catch (InvalidDataException)
+        {
+            throw; // Propagate checksum / corruption errors as-is so callers can act on them.
+        }
+        catch (Exception ex)
+        {
+            throw new IOException($"Failed to load vectors for index '{Name}' from '{loadpath}': {ex.Message}", ex);
+        }
 
+        try
+        {
+            var docsBytes = DataFileHelper.ReadAndVerifyChecksum(Path.Combine(loadpath, "documents.bin"));
+            loadedDocuments = MessagePackSerializer.Deserialize<List<VectorDbDocument>>(docsBytes, options);
+        }
+        catch (InvalidDataException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new IOException($"Failed to load documents for index '{Name}' from '{loadpath}': {ex.Message}", ex);
+        }
+
+        if (loadedVectors.Count != loadedDocuments.Count)
+            throw new InvalidDataException(
+                $"Index '{Name}' is inconsistent: {loadedVectors.Count} vectors but {loadedDocuments.Count} documents.");
+
+        vectors = loadedVectors;
+        _documents = loadedDocuments;
         _fileValid = true;
     }
 
