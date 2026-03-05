@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K1.VectorDB — Multilayer Graph</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+
+      --layer0:    #1f6feb;   /* Layer 0 — Domain      */
+      --layer1:    #3fb950;   /* Layer 1 — Technology  */
+      --layer2:    #d29922;   /* Layer 2 — Document    */
+      --layer3:    #bc8cff;   /* Layer 3 — custom      */
+
+      --edge-intra:  rgba(255,255,255,0.25);
+      --edge-inter:  #f78166;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    code, pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    section { padding: 72px 0; }
+    section + section { border-top: 1px solid var(--border); }
+
+    h1 { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.5px; }
+    h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 12px; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+    p  { color: var(--muted); margin-bottom: 12px; }
+
+    /* ── Nav ──────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,17,23,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 0;
+    }
+    nav .inner {
+      display: flex; align-items: center; gap: 32px;
+      max-width: 1100px; margin: 0 auto; padding: 0 24px;
+    }
+    nav .brand { font-weight: 700; font-size: 1rem; color: var(--text); white-space: nowrap; }
+    nav .brand span { color: var(--accent); }
+    nav ul { list-style: none; display: flex; gap: 24px; flex-wrap: wrap; }
+    nav ul li a { color: var(--muted); font-size: 0.9rem; }
+    nav ul li a:hover { color: var(--text); text-decoration: none; }
+
+    /* ── Hero ─────────────────────────────────────────────────────── */
+    #hero {
+      padding: 88px 0 64px;
+      text-align: center;
+    }
+    #hero .badge {
+      display: inline-block;
+      background: rgba(88,166,255,0.12);
+      color: var(--accent);
+      border: 1px solid rgba(88,166,255,0.3);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+    }
+    #hero h1 { margin-bottom: 16px; }
+    #hero p  { max-width: 620px; margin: 0 auto 32px; font-size: 1.05rem; }
+
+    .pill-row { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+    .pill {
+      border-radius: 20px; padding: 6px 16px; font-size: 0.82rem; font-weight: 600;
+      border: 1px solid;
+    }
+    .pill-blue   { background: rgba(31,111,235,0.15); color: #79c0ff; border-color: rgba(31,111,235,0.4); }
+    .pill-green  { background: rgba(63,185,80,0.15);  color: #56d364; border-color: rgba(63,185,80,0.4); }
+    .pill-yellow { background: rgba(210,153,34,0.15); color: #e3b341; border-color: rgba(210,153,34,0.4); }
+    .pill-purple { background: rgba(188,140,255,0.15);color: #d2a8ff; border-color: rgba(188,140,255,0.4); }
+    .pill-red    { background: rgba(247,129,102,0.15);color: #ffa198; border-color: rgba(247,129,102,0.4); }
+
+    /* ── 3-D Layer Canvas ─────────────────────────────────────────── */
+    #canvas-wrap {
+      position: relative;
+      width: 100%;
+      overflow: visible;
+    }
+    #layer-canvas {
+      display: block;
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    /* ── Legend ───────────────────────────────────────────────────── */
+    .legend {
+      display: flex; gap: 24px; flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted); }
+    .legend-dot  { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .legend-line {
+      width: 28px; height: 3px; border-radius: 2px; flex-shrink: 0;
+    }
+
+    /* ── Tooltip ──────────────────────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      max-width: 240px;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.15s;
+      line-height: 1.5;
+    }
+    #tooltip.show { opacity: 1; }
+    #tooltip strong { color: var(--text); display: block; margin-bottom: 4px; }
+    #tooltip span { color: var(--muted); }
+
+    /* ── Info panel ───────────────────────────────────────────────── */
+    #info-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-top: 28px;
+      max-width: 860px;
+      margin-left: auto; margin-right: auto;
+      min-height: 80px;
+      transition: background 0.2s;
+    }
+    #info-panel h4 { font-size: 1rem; margin-bottom: 6px; }
+    #info-panel .meta { color: var(--muted); font-size: 0.85rem; }
+    #info-panel .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    #info-panel .tag {
+      background: rgba(88,166,255,0.1);
+      color: #79c0ff;
+      border: 1px solid rgba(88,166,255,0.25);
+      border-radius: 6px;
+      padding: 2px 10px;
+      font-size: 0.78rem;
+    }
+
+    /* ── Data-structure grid ──────────────────────────────────────── */
+    .ds-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 28px; }
+    .ds-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .ds-card-header {
+      padding: 12px 18px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+    .ds-card-body { padding: 16px 18px; }
+    .ds-field {
+      display: flex; gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.83rem;
+    }
+    .ds-field:last-child { border-bottom: none; }
+    .ds-field .fname { color: var(--text); min-width: 130px; flex-shrink: 0; }
+    .ds-field .ftype { color: #79c0ff; }
+    .ds-field .fdesc { color: var(--muted); font-size: 0.78rem; margin-top: 1px; }
+    .ds-field-inner { flex: 1; }
+
+    /* ── Service architecture ─────────────────────────────────────── */
+    .arch-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      max-width: 720px;
+      margin: 32px auto 0;
+    }
+    .arch-row {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+    }
+    .arch-facade {
+      background: linear-gradient(135deg, rgba(88,166,255,0.15), rgba(88,166,255,0.05));
+      border: 1px solid rgba(88,166,255,0.4);
+      border-radius: 10px;
+      padding: 18px 24px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--accent);
+      width: 100%;
+      position: relative;
+    }
+    .arch-facade small { display: block; color: var(--muted); font-size: 0.78rem; font-weight: 400; margin-top: 4px; }
+    .arch-arrow {
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 1.4rem;
+      padding: 6px 0;
+    }
+    .arch-services {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: 100%;
+    }
+    .arch-svc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      text-align: center;
+      transition: border-color 0.2s, transform 0.15s;
+      cursor: default;
+    }
+    .arch-svc:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .arch-svc .svc-icon { font-size: 1.4rem; margin-bottom: 6px; }
+    .arch-svc .svc-name { font-size: 0.82rem; font-weight: 700; color: var(--text); }
+    .arch-svc .svc-iface { font-size: 0.72rem; color: var(--accent); margin-top: 2px; }
+    .arch-svc .svc-desc { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+    .arch-infra {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      width: 100%;
+    }
+    .arch-infra-item {
+      background: rgba(63,185,80,0.07);
+      border: 1px solid rgba(63,185,80,0.25);
+      border-radius: 8px;
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .arch-infra-item .svc-name { font-size: 0.82rem; font-weight: 700; color: #56d364; }
+    .arch-infra-item .svc-desc { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+
+    /* ── Data-flow ────────────────────────────────────────────────── */
+    .flow-steps {
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+      margin-top: 32px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .flow-step {
+      flex: 1; min-width: 130px;
+      display: flex; flex-direction: column; align-items: center;
+      text-align: center;
+      position: relative;
+    }
+    .flow-step:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -12px;
+      top: 22px;
+      font-size: 1.2rem;
+      color: var(--muted);
+    }
+    .flow-icon {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: 10px;
+      flex-shrink: 0;
+    }
+    .flow-step h4 { font-size: 0.85rem; color: var(--text); margin-bottom: 4px; }
+    .flow-step p  { font-size: 0.77rem; color: var(--muted); margin: 0; }
+
+    /* ── Edge-type table ──────────────────────────────────────────── */
+    .edge-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.85rem; }
+    .edge-table th, .edge-table td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    .edge-table th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .edge-table td:first-child { font-weight: 600; color: var(--text); }
+    .edge-table td { color: var(--muted); }
+    .badge-intra { background: rgba(255,255,255,0.08); color: #e6edf3; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .badge-inter { background: rgba(247,129,102,0.15); color: #ffa198; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
+
+    /* ── Code block ───────────────────────────────────────────────── */
+    .code-block {
+      background: #010409;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 22px;
+      overflow-x: auto;
+      margin-top: 20px;
+    }
+    .code-block pre { color: var(--text); line-height: 1.7; }
+    .kw  { color: #ff7b72; }
+    .ty  { color: #79c0ff; }
+    .str { color: #a5d6ff; }
+    .cm  { color: #8b949e; font-style: italic; }
+    .num { color: #f2cc60; }
+    .mt  { color: #d2a8ff; }
+
+    /* ── Search visual ────────────────────────────────────────────── */
+    .search-diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px;
+      margin-top: 24px;
+      max-width: 720px;
+      margin-left: auto; margin-right: auto;
+    }
+    .search-query {
+      background: #010409;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-family: monospace;
+      color: #a5d6ff;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+    .search-layers {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .search-layer-box {
+      flex: 1; min-width: 120px;
+      border-radius: 8px;
+      padding: 10px 14px;
+      border: 1px solid;
+      font-size: 0.8rem;
+    }
+    .search-layer-box .sl-name { font-weight: 700; margin-bottom: 4px; }
+    .search-layer-box .sl-score { font-family: monospace; }
+    .sl-0 { border-color: rgba(31,111,235,0.4); background: rgba(31,111,235,0.08); }
+    .sl-0 .sl-name { color: #79c0ff; }
+    .sl-1 { border-color: rgba(63,185,80,0.4); background: rgba(63,185,80,0.08); }
+    .sl-1 .sl-name { color: #56d364; }
+    .sl-2 { border-color: rgba(210,153,34,0.4); background: rgba(210,153,34,0.08); }
+    .sl-2 .sl-name { color: #e3b341; }
+    .search-results { margin-top: 12px; }
+    .sr-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+    }
+    .sr-item:last-child { border-bottom: none; }
+    .sr-rank { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+    .sr-label { flex: 1; color: var(--text); }
+    .sr-layer { font-size: 0.75rem; color: var(--muted); }
+    .sr-score { font-family: monospace; color: #56d364; font-size: 0.8rem; }
+
+    /* ── Footer ───────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    /* ── Responsive ───────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      h1 { font-size: 1.8rem; }
+      .arch-services { grid-template-columns: 1fr 1fr; }
+      .flow-steps { flex-direction: column; gap: 16px; }
+      .flow-step::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Tooltip ──────────────────────────────────────────────────── -->
+<div id="tooltip"></div>
+
+<!-- ── Nav ──────────────────────────────────────────────────────── -->
+<nav>
+  <div class="inner">
+    <div class="brand"><span>K1</span>.VectorDB</div>
+    <ul>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#structures">Data Structures</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#flow">Data Flow</a></li>
+      <li><a href="#edges">Edges</a></li>
+      <li><a href="#search">Search</a></li>
+      <li><a href="#code">Code</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ── Hero ──────────────────────────────────────────────────────── -->
+<section id="hero">
+  <div class="container">
+    <div class="badge">Multilayer Graph</div>
+    <h1>How data builds up<br>layer by layer</h1>
+    <p>
+      K1.VectorDB organises knowledge into named <strong>layers</strong>. Nodes live on one or more layers,
+      edges connect them within a layer or across layers, and every layer gets its own
+      vector index for semantic search.
+    </p>
+    <div class="pill-row">
+      <span class="pill pill-blue">GraphLayer</span>
+      <span class="pill pill-green">GraphNode</span>
+      <span class="pill pill-red">GraphEdge</span>
+      <span class="pill pill-yellow">VectorDb Index</span>
+      <span class="pill pill-purple">Cosine Search</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Interactive diagram ───────────────────────────────────────── -->
+<section id="overview">
+  <div class="container">
+    <h2>Interactive Layer Diagram</h2>
+    <p>Click any node or edge to inspect its properties. Hover to preview.</p>
+
+    <div id="canvas-wrap">
+      <svg id="layer-canvas" viewBox="0 0 860 560" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.3)" />
+          </marker>
+          <marker id="arrow-inter" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#f78166" />
+          </marker>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <!-- ── Layer 2 — Document (back, bottom) ─────────────────── -->
+        <!-- layer plate -->
+        <g class="layer-group" data-layer="2" data-name="Document" data-desc="Stores raw text documents and chunks. Each node holds Content that is embedded into the layer&#39;s VectorDb index.">
+          <rect x="60" y="370" width="740" height="110" rx="10"
+                fill="rgba(210,153,34,0.06)" stroke="#d29922" stroke-width="1.5" stroke-dasharray="6 4" />
+          <text x="78" y="392" fill="#d29922" font-size="11" font-weight="700" font-family="monospace">LAYER 2 — Document</text>
+
+          <!-- nodes -->
+          <g class="node" data-id="n5" data-layer="Document" data-label="Doc: Intro to Graphs"
+             data-content="An introductory article explaining graph theory concepts."
+             data-meta="type=article, words=1240">
+            <circle cx="150" cy="432" r="26" fill="rgba(210,153,34,0.2)" stroke="#d29922" stroke-width="2"/>
+            <text x="150" y="429" text-anchor="middle" fill="#e3b341" font-size="9" font-weight="700">Doc</text>
+            <text x="150" y="442" text-anchor="middle" fill="#e3b341" font-size="8">Intro Graphs</text>
+          </g>
+
+          <g class="node" data-id="n6" data-layer="Document" data-label="Doc: Vector Similarity"
+             data-content="A technical document covering cosine similarity and ANN algorithms."
+             data-meta="type=article, words=2400">
+            <circle cx="340" cy="432" r="26" fill="rgba(210,153,34,0.2)" stroke="#d29922" stroke-width="2"/>
+            <text x="340" y="429" text-anchor="middle" fill="#e3b341" font-size="9" font-weight="700">Doc</text>
+            <text x="340" y="442" text-anchor="middle" fill="#e3b341" font-size="8">Vec Similarity</text>
+          </g>
+
+          <g class="node" data-id="n7" data-layer="Document" data-label="Doc: .NET Embeddings"
+             data-content="How to embed text in .NET using LM Studio and local models."
+             data-meta="type=tutorial, words=980">
+            <circle cx="530" cy="432" r="26" fill="rgba(210,153,34,0.2)" stroke="#d29922" stroke-width="2"/>
+            <text x="530" y="429" text-anchor="middle" fill="#e3b341" font-size="9" font-weight="700">Doc</text>
+            <text x="340" y="442" text-anchor="middle" fill="#e3b341" font-size="8"></text>
+            <text x="530" y="442" text-anchor="middle" fill="#e3b341" font-size="8">.NET Embed</text>
+          </g>
+
+          <g class="node" data-id="n8" data-layer="Document" data-label="Doc: BFS Traversal"
+             data-content="Breadth-first search over multilayer knowledge graphs."
+             data-meta="type=tutorial, words=640">
+            <circle cx="720" cy="432" r="26" fill="rgba(210,153,34,0.2)" stroke="#d29922" stroke-width="2"/>
+            <text x="720" y="429" text-anchor="middle" fill="#e3b341" font-size="9" font-weight="700">Doc</text>
+            <text x="720" y="442" text-anchor="middle" fill="#e3b341" font-size="8">BFS Traversal</text>
+          </g>
+
+          <!-- intra-layer edges -->
+          <line x1="176" y1="432" x2="314" y2="432" stroke="rgba(210,153,34,0.35)" stroke-width="1.5"
+                marker-end="url(#arrow)"
+                class="edge intra-edge" data-label="references" data-weight="0.9" data-directed="true"/>
+          <line x1="366" y1="432" x2="504" y2="432" stroke="rgba(210,153,34,0.35)" stroke-width="1.5"
+                marker-end="url(#arrow)"
+                class="edge intra-edge" data-label="related-to" data-weight="0.7" data-directed="false"/>
+          <line x1="556" y1="432" x2="694" y2="432" stroke="rgba(210,153,34,0.35)" stroke-width="1.5"
+                marker-end="url(#arrow)"
+                class="edge intra-edge" data-label="extends" data-weight="0.8" data-directed="true"/>
+
+          <!-- VectorDB index badge -->
+          <rect x="748" y="376" width="44" height="18" rx="4" fill="rgba(63,185,80,0.15)" stroke="rgba(63,185,80,0.4)" stroke-width="1"/>
+          <text x="770" y="388" text-anchor="middle" fill="#56d364" font-size="8" font-weight="700">VecIdx</text>
+        </g>
+
+        <!-- ── Layer 1 — Technology (middle) ──────────────────────── -->
+        <g class="layer-group" data-layer="1" data-name="Technology" data-desc="Specific technologies, libraries and tools. Nodes here can link upward to Domain concepts or downward to Document evidence.">
+          <rect x="60" y="235" width="740" height="110" rx="10"
+                fill="rgba(63,185,80,0.06)" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="6 4"/>
+          <text x="78" y="257" fill="#3fb950" font-size="11" font-weight="700" font-family="monospace">LAYER 1 — Technology</text>
+
+          <!-- nodes -->
+          <g class="node" data-id="n3" data-layer="Technology" data-label="HNSW Index"
+             data-content="Hierarchical Navigable Small World graph used for approximate nearest-neighbour search."
+             data-meta="type=algorithm, family=ANN">
+            <circle cx="180" cy="297" r="26" fill="rgba(63,185,80,0.2)" stroke="#3fb950" stroke-width="2"/>
+            <text x="180" y="294" text-anchor="middle" fill="#56d364" font-size="9" font-weight="700">HNSW</text>
+            <text x="180" y="307" text-anchor="middle" fill="#56d364" font-size="8">Index</text>
+          </g>
+
+          <g class="node" data-id="n4" data-layer="Technology" data-label="LM Studio Embedder"
+             data-content="Local LLM inference server providing text embeddings via HTTP."
+             data-meta="type=service, port=1234">
+            <circle cx="430" cy="297" r="26" fill="rgba(63,185,80,0.2)" stroke="#3fb950" stroke-width="2"/>
+            <text x="430" y="294" text-anchor="middle" fill="#56d364" font-size="9" font-weight="700">LM Studio</text>
+            <text x="430" y="307" text-anchor="middle" fill="#56d364" font-size="8">Embedder</text>
+          </g>
+
+          <g class="node" data-id="n4b" data-layer="Technology" data-label="MessagePack"
+             data-content="Binary serialisation format used by GraphPersistenceService."
+             data-meta="type=library, compression=Lz4Block">
+            <circle cx="670" cy="297" r="26" fill="rgba(63,185,80,0.2)" stroke="#3fb950" stroke-width="2"/>
+            <text x="670" y="294" text-anchor="middle" fill="#56d364" font-size="9" font-weight="700">MsgPack</text>
+            <text x="670" y="307" text-anchor="middle" fill="#56d364" font-size="8">Persist</text>
+          </g>
+
+          <!-- intra-layer edge -->
+          <line x1="206" y1="297" x2="404" y2="297" stroke="rgba(63,185,80,0.35)" stroke-width="1.5"
+                marker-end="url(#arrow)"
+                class="edge intra-edge" data-label="uses" data-weight="1.0" data-directed="true"/>
+          <line x1="456" y1="297" x2="644" y2="297" stroke="rgba(63,185,80,0.35)" stroke-width="1.5"
+                marker-end="url(#arrow)"
+                class="edge intra-edge" data-label="serialises-for" data-weight="0.6" data-directed="true"/>
+
+          <!-- VectorDB index badge -->
+          <rect x="748" y="241" width="44" height="18" rx="4" fill="rgba(63,185,80,0.15)" stroke="rgba(63,185,80,0.4)" stroke-width="1"/>
+          <text x="770" y="253" text-anchor="middle" fill="#56d364" font-size="8" font-weight="700">VecIdx</text>
+        </g>
+
+        <!-- ── Layer 0 — Domain (top) ──────────────────────────────── -->
+        <g class="layer-group" data-layer="0" data-name="Domain" data-desc="High-level domain concepts. These abstract nodes are semantic anchors that organise the knowledge graph from the top down.">
+          <rect x="60" y="100" width="740" height="110" rx="10"
+                fill="rgba(31,111,235,0.06)" stroke="#1f6feb" stroke-width="1.5" stroke-dasharray="6 4"/>
+          <text x="78" y="122" fill="#1f6feb" font-size="11" font-weight="700" font-family="monospace">LAYER 0 — Domain</text>
+
+          <!-- nodes -->
+          <g class="node" data-id="n1" data-layer="Domain" data-label="Graph Theory"
+             data-content="The mathematical study of graphs — structures made of vertices connected by edges."
+             data-meta="type=concept, field=mathematics">
+            <circle cx="220" cy="162" r="30" fill="rgba(31,111,235,0.25)" stroke="#1f6feb" stroke-width="2.5" filter="url(#glow)"/>
+            <text x="220" y="159" text-anchor="middle" fill="#79c0ff" font-size="9" font-weight="700">Graph</text>
+            <text x="220" y="172" text-anchor="middle" fill="#79c0ff" font-size="9" font-weight="700">Theory</text>
+          </g>
+
+          <g class="node" data-id="n2" data-layer="Domain" data-label="Vector Search"
+             data-content="Semantic retrieval using embedding vectors and distance metrics like cosine similarity."
+             data-meta="type=concept, field=information-retrieval">
+            <circle cx="530" cy="162" r="30" fill="rgba(31,111,235,0.25)" stroke="#1f6feb" stroke-width="2.5" filter="url(#glow)"/>
+            <text x="530" y="159" text-anchor="middle" fill="#79c0ff" font-size="9" font-weight="700">Vector</text>
+            <text x="530" y="172" text-anchor="middle" fill="#79c0ff" font-size="9" font-weight="700">Search</text>
+          </g>
+
+          <!-- intra-layer edge -->
+          <line x1="250" y1="162" x2="500" y2="162" stroke="rgba(31,111,235,0.4)" stroke-width="1.5"
+                marker-end="url(#arrow)"
+                class="edge intra-edge" data-label="enables" data-weight="0.95" data-directed="true"/>
+
+          <!-- VectorDB index badge -->
+          <rect x="748" y="106" width="44" height="18" rx="4" fill="rgba(63,185,80,0.15)" stroke="rgba(63,185,80,0.4)" stroke-width="1"/>
+          <text x="770" y="118" text-anchor="middle" fill="#56d364" font-size="8" font-weight="700">VecIdx</text>
+        </g>
+
+        <!-- ── Inter-layer edges ────────────────────────────────────── -->
+        <!-- Domain→Technology: Graph Theory → HNSW -->
+        <line x1="220" y1="192" x2="180" y2="271"
+              stroke="#f78166" stroke-width="1.8" stroke-dasharray="5 3"
+              marker-end="url(#arrow-inter)"
+              class="edge inter-edge" data-label="implemented-by" data-weight="0.85" data-directed="true"/>
+
+        <!-- Domain→Technology: Vector Search → LM Studio -->
+        <line x1="530" y1="192" x2="430" y2="271"
+              stroke="#f78166" stroke-width="1.8" stroke-dasharray="5 3"
+              marker-end="url(#arrow-inter)"
+              class="edge inter-edge" data-label="powered-by" data-weight="0.9" data-directed="true"/>
+
+        <!-- Technology→Document: HNSW → Doc:Intro Graphs -->
+        <line x1="165" y1="323" x2="150" y2="406"
+              stroke="#f78166" stroke-width="1.8" stroke-dasharray="5 3"
+              marker-end="url(#arrow-inter)"
+              class="edge inter-edge" data-label="documented-in" data-weight="0.75" data-directed="true"/>
+
+        <!-- Technology→Document: LM Studio → Doc:Vec Similarity -->
+        <line x1="415" y1="323" x2="340" y2="406"
+              stroke="#f78166" stroke-width="1.8" stroke-dasharray="5 3"
+              marker-end="url(#arrow-inter)"
+              class="edge inter-edge" data-label="documented-in" data-weight="0.8" data-directed="true"/>
+
+        <!-- Technology→Document: LM Studio → Doc:.NET Embed -->
+        <line x1="445" y1="323" x2="530" y2="406"
+              stroke="#f78166" stroke-width="1.8" stroke-dasharray="5 3"
+              marker-end="url(#arrow-inter)"
+              class="edge inter-edge" data-label="tutorial-for" data-weight="0.7" data-directed="true"/>
+
+        <!-- Technology→Document: MsgPack → BFS (cross-node shared layer example) -->
+        <line x1="670" y1="323" x2="720" y2="406"
+              stroke="#f78166" stroke-width="1.8" stroke-dasharray="5 3"
+              marker-end="url(#arrow-inter)"
+              class="edge inter-edge" data-label="referenced-by" data-weight="0.5" data-directed="true"/>
+
+        <!-- ── Layer connector arrows (visual structure) ────────── -->
+        <text x="820" y="165" fill="var(--muted)" font-size="10" font-family="monospace" opacity="0.5">L0</text>
+        <text x="820" y="300" fill="var(--muted)" font-size="10" font-family="monospace" opacity="0.5">L1</text>
+        <text x="820" y="435" fill="var(--muted)" font-size="10" font-family="monospace" opacity="0.5">L2</text>
+        <line x1="818" y1="175" x2="818" y2="285" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3"/>
+        <line x1="818" y1="310" x2="818" y2="420" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3"/>
+
+        <!-- ── Shared-node highlight ───────────────────────────────── -->
+        <!-- "Graph Theory" concept node is also placed in Technology — shown as ghost -->
+        <circle cx="670" cy="162" r="22" fill="none" stroke="#1f6feb" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.5"/>
+        <text x="670" y="159" text-anchor="middle" fill="#1f6feb" font-size="8" opacity="0.6">Graph</text>
+        <text x="670" y="170" text-anchor="middle" fill="#1f6feb" font-size="8" opacity="0.6">Theory</text>
+        <text x="670" y="183" text-anchor="middle" fill="#1f6feb" font-size="7" opacity="0.4">(shared)</text>
+        <line x1="250" y1="162" x2="648" y2="162" stroke="rgba(31,111,235,0.25)" stroke-width="1" stroke-dasharray="3 3"/>
+
+      </svg>
+    </div>
+
+    <!-- Info panel -->
+    <div id="info-panel">
+      <div class="meta">Click a <strong style="color:var(--text)">node</strong> or <strong style="color:var(--text)">edge</strong> to inspect its properties.</div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#1f6feb"></div> Domain layer (L0)
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#3fb950"></div> Technology layer (L1)
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#d29922"></div> Document layer (L2)
+      </div>
+      <div class="legend-item">
+        <div class="legend-line" style="background:rgba(255,255,255,0.25)"></div> Intra-layer edge
+      </div>
+      <div class="legend-item">
+        <div class="legend-line" style="background:#f78166"></div> Inter-layer edge
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#56d364; border-radius:3px"></div> VectorDb index (per layer)
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Data Structures ───────────────────────────────────────────── -->
+<section id="structures">
+  <div class="container">
+    <h2>Data Structures</h2>
+    <p>Three core types form the entire graph model. Every object is serialised via MessagePack for persistence.</p>
+
+    <div class="ds-grid">
+
+      <!-- GraphLayer -->
+      <div class="ds-card">
+        <div class="ds-card-header" style="background:rgba(31,111,235,0.12); color:#79c0ff; border-bottom:1px solid rgba(31,111,235,0.25)">
+          GraphLayer
+        </div>
+        <div class="ds-card-body">
+          <div class="ds-field">
+            <span class="fname">Id</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">GUID — primary key, used as VectorDb index name</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">Name</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">Human-readable label, e.g. "Domain"</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">Description</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">Optional free-text purpose of this layer</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GraphNode -->
+      <div class="ds-card">
+        <div class="ds-card-header" style="background:rgba(63,185,80,0.12); color:#56d364; border-bottom:1px solid rgba(63,185,80,0.25)">
+          GraphNode
+        </div>
+        <div class="ds-card-body">
+          <div class="ds-field">
+            <span class="fname">Id</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">GUID — also the VectorDb document id</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">Label</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">Short name shown in queries and traversals</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">Content</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">Full text — what gets embedded into the vector index</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">LayerIds</span>
+            <div class="ds-field-inner">
+              <div class="ftype">List&lt;string&gt;</div>
+              <div class="fdesc">A node can span multiple layers simultaneously</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">Metadata</span>
+            <div class="ds-field-inner">
+              <div class="ftype">Dictionary&lt;string,string&gt;</div>
+              <div class="fdesc">Arbitrary key/value annotations</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GraphEdge -->
+      <div class="ds-card">
+        <div class="ds-card-header" style="background:rgba(247,129,102,0.12); color:#ffa198; border-bottom:1px solid rgba(247,129,102,0.25)">
+          GraphEdge
+        </div>
+        <div class="ds-card-body">
+          <div class="ds-field">
+            <span class="fname">Id</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">GUID — primary key</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">SourceNodeId</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">Id of the source GraphNode</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">TargetNodeId</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">Id of the target GraphNode</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">RelationLabel</span>
+            <div class="ds-field-inner">
+              <div class="ftype">string</div>
+              <div class="fdesc">Semantic relation name, e.g. "implements"</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">Weight</span>
+            <div class="ds-field-inner">
+              <div class="ftype">double</div>
+              <div class="fdesc">Edge strength, default 1.0</div>
+            </div>
+          </div>
+          <div class="ds-field">
+            <span class="fname">IsDirected</span>
+            <div class="ds-field-inner">
+              <div class="ftype">bool</div>
+              <div class="fdesc">Directed (A→B) or undirected (A↔B)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── Service Architecture ──────────────────────────────────────── -->
+<section id="architecture">
+  <div class="container">
+    <h2>Service Architecture</h2>
+    <p><code>MultiLayerGraph</code> is a thin facade that composes five focused services, each owning a single responsibility.</p>
+
+    <div class="arch-diagram">
+      <!-- Facade -->
+      <div class="arch-row">
+        <div class="arch-facade">
+          MultiLayerGraph
+          <small>public facade — implements all 5 interfaces</small>
+        </div>
+      </div>
+
+      <div class="arch-arrow">↓</div>
+
+      <!-- Services -->
+      <div class="arch-services">
+        <div class="arch-svc">
+          <div class="svc-icon">🗂️</div>
+          <div class="svc-name">GraphLayerManager</div>
+          <div class="svc-iface">IGraphLayerManager</div>
+          <div class="svc-desc">Add / remove layers; creates a VectorDb index per layer</div>
+        </div>
+        <div class="arch-svc">
+          <div class="svc-icon">🔵</div>
+          <div class="svc-name">GraphNodeManager</div>
+          <div class="svc-iface">IGraphNodeManager</div>
+          <div class="svc-desc">Add / remove nodes; indexes Content into the layer's VectorDb</div>
+        </div>
+        <div class="arch-svc">
+          <div class="svc-icon">🔗</div>
+          <div class="svc-name">GraphEdgeManager</div>
+          <div class="svc-iface">IGraphEdgeManager</div>
+          <div class="svc-desc">Directed / undirected edges; in/out adjacency lists; intra vs inter classification</div>
+        </div>
+        <div class="arch-svc">
+          <div class="svc-icon">🔍</div>
+          <div class="svc-name">GraphSearchService</div>
+          <div class="svc-iface">IGraphSearch</div>
+          <div class="svc-desc">Cosine-similarity search over all layers or scoped to one layer</div>
+        </div>
+        <div class="arch-svc">
+          <div class="svc-icon">🌐</div>
+          <div class="svc-name">GraphTraversalService</div>
+          <div class="svc-iface">IGraphTraversal</div>
+          <div class="svc-desc">BFS and neighbour lookup; optionally crossing inter-layer edges</div>
+        </div>
+        <div class="arch-svc">
+          <div class="svc-icon">💾</div>
+          <div class="svc-name">GraphPersistenceService</div>
+          <div class="svc-iface">(internal)</div>
+          <div class="svc-desc">Save / Load via MessagePack + Lz4 compression</div>
+        </div>
+      </div>
+
+      <div class="arch-arrow">↓</div>
+
+      <!-- Infrastructure -->
+      <div class="arch-infra">
+        <div class="arch-infra-item">
+          <div class="svc-name">GraphStore</div>
+          <div class="svc-desc">In-memory dictionaries: Nodes, Edges, Layers, OutEdges, InEdges</div>
+        </div>
+        <div class="arch-infra-item">
+          <div class="svc-name">VectorDb (per layer)</div>
+          <div class="svc-desc">HNSW index per layer, embedding via IEmbedder (LM Studio)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Data Flow ─────────────────────────────────────────────────── -->
+<section id="flow">
+  <div class="container">
+    <h2>Data Flow</h2>
+    <p>From adding a node to retrieving it by semantic search — five stages, two storage targets.</p>
+
+    <div class="flow-steps">
+
+      <div class="flow-step">
+        <div class="flow-icon" style="background:rgba(31,111,235,0.15); border:1px solid rgba(31,111,235,0.3)">🗂️</div>
+        <h4>1. AddLayer</h4>
+        <p>Create a named layer. A dedicated VectorDb index is registered for it.</p>
+      </div>
+
+      <div class="flow-step">
+        <div class="flow-icon" style="background:rgba(63,185,80,0.15); border:1px solid rgba(63,185,80,0.3)">✏️</div>
+        <h4>2. AddNode</h4>
+        <p>A GraphNode is created with Label, Content, LayerIds and Metadata.</p>
+      </div>
+
+      <div class="flow-step">
+        <div class="flow-icon" style="background:rgba(188,140,255,0.15); border:1px solid rgba(188,140,255,0.3)">🧠</div>
+        <h4>3. Embed</h4>
+        <p>Content is sent to IEmbedder (LM Studio) and a float[] vector is returned.</p>
+      </div>
+
+      <div class="flow-step">
+        <div class="flow-icon" style="background:rgba(210,153,34,0.15); border:1px solid rgba(210,153,34,0.3)">📐</div>
+        <h4>4. Index</h4>
+        <p>The vector is inserted into the layer's HNSW index inside VectorDb.</p>
+      </div>
+
+      <div class="flow-step">
+        <div class="flow-icon" style="background:rgba(247,129,102,0.15); border:1px solid rgba(247,129,102,0.3)">🔍</div>
+        <h4>5. Search</h4>
+        <p>A query is embedded and cosine distances computed across the HNSW index.</p>
+      </div>
+
+      <div class="flow-step">
+        <div class="flow-icon" style="background:rgba(86,211,100,0.15); border:1px solid rgba(86,211,100,0.3)">↩️</div>
+        <h4>6. Traverse</h4>
+        <p>Top-K results seed BFS; edges carry the walk across layers.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── Edge Types ────────────────────────────────────────────────── -->
+<section id="edges">
+  <div class="container">
+    <h2>Edge Types</h2>
+    <p>Edges are classified at query time — not stored as a type flag — based on whether source and target share a common layer.</p>
+
+    <table class="edge-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Visual</th>
+          <th>Rule</th>
+          <th>API method</th>
+          <th>Use case</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Intra-layer</td>
+          <td><span class="badge-intra">──►</span></td>
+          <td>Source and target share at least one LayerId</td>
+          <td><code>GetIntraLayerEdges(layerId)</code></td>
+          <td>Relationships within a single semantic domain</td>
+        </tr>
+        <tr>
+          <td>Inter-layer</td>
+          <td><span class="badge-inter">- - ►</span></td>
+          <td>Source and target share no LayerId</td>
+          <td><code>GetInterLayerEdges()</code></td>
+          <td>Bridges between domains, e.g. concept → implementation</td>
+        </tr>
+        <tr>
+          <td>Directed</td>
+          <td><code>IsDirected = true</code></td>
+          <td>A → B only; GetInEdges / GetOutEdges differ</td>
+          <td><code>AddEdge(..., directed: true)</code></td>
+          <td>Causal, hierarchical, or implementation relationships</td>
+        </tr>
+        <tr>
+          <td>Undirected</td>
+          <td><code>IsDirected = false</code></td>
+          <td>A ↔ B; traversal follows both directions</td>
+          <td><code>AddEdge(..., directed: false)</code></td>
+          <td>Symmetric associations — "related-to", "similar-to"</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top:16px; font-size:0.83rem;">
+      A node's <code>LayerIds</code> list can contain more than one Id — this is how a <strong>shared node</strong>
+      appears in multiple layers simultaneously (see the ghost "Graph Theory" circle in Layer 1 above).
+      When a shared node's edge target is also in one of those same layers, the edge is still intra-layer.
+    </p>
+  </div>
+</section>
+
+<!-- ── Search visualisation ──────────────────────────────────────── -->
+<section id="search">
+  <div class="container">
+    <h2>Semantic Search</h2>
+    <p>
+      <code>SearchNodes</code> queries the global index. <code>SearchNodesInLayer</code> scopes the search
+      to a single layer's HNSW index. Both return <code>GraphSearchResult</code> objects ranked by cosine similarity.
+    </p>
+
+    <div class="search-diagram">
+      <div class="search-query">query: "how does vector similarity work in practice?"</div>
+
+      <div style="font-size:0.78rem; color:var(--muted); margin-bottom:10px;">
+        Embedding produced → cosine similarity scored against each layer's HNSW index:
+      </div>
+
+      <div class="search-layers">
+        <div class="search-layer-box sl-0">
+          <div class="sl-name">Layer 0 — Domain</div>
+          <div class="sl-score" style="color:var(--muted)">best match: <span style="color:#79c0ff">Vector Search</span></div>
+          <div class="sl-score" style="color:#56d364; font-size:0.78rem">score 0.91</div>
+        </div>
+        <div class="search-layer-box sl-1">
+          <div class="sl-name">Layer 1 — Technology</div>
+          <div class="sl-score" style="color:var(--muted)">best match: <span style="color:#56d364">LM Studio Embedder</span></div>
+          <div class="sl-score" style="color:#56d364; font-size:0.78rem">score 0.87</div>
+        </div>
+        <div class="search-layer-box sl-2">
+          <div class="sl-name">Layer 2 — Document</div>
+          <div class="sl-score" style="color:var(--muted)">best match: <span style="color:#e3b341">Doc: Vec Similarity</span></div>
+          <div class="sl-score" style="color:#56d364; font-size:0.78rem">score 0.96</div>
+        </div>
+      </div>
+
+      <div style="font-size:0.78rem; color:var(--muted); margin-bottom:8px;">Global top-5 results (merged, de-duped):</div>
+      <div class="search-results">
+        <div class="sr-item">
+          <div class="sr-rank" style="background:rgba(210,153,34,0.2); color:#e3b341;">#1</div>
+          <div class="sr-label">Doc: Vector Similarity</div>
+          <div class="sr-layer">Document</div>
+          <div class="sr-score">0.96</div>
+        </div>
+        <div class="sr-item">
+          <div class="sr-rank" style="background:rgba(31,111,235,0.2); color:#79c0ff;">#2</div>
+          <div class="sr-label">Vector Search</div>
+          <div class="sr-layer">Domain</div>
+          <div class="sr-score">0.91</div>
+        </div>
+        <div class="sr-item">
+          <div class="sr-rank" style="background:rgba(63,185,80,0.2); color:#56d364;">#3</div>
+          <div class="sr-label">LM Studio Embedder</div>
+          <div class="sr-layer">Technology</div>
+          <div class="sr-score">0.87</div>
+        </div>
+        <div class="sr-item">
+          <div class="sr-rank" style="background:rgba(210,153,34,0.2); color:#e3b341;">#4</div>
+          <div class="sr-label">Doc: .NET Embeddings</div>
+          <div class="sr-layer">Document</div>
+          <div class="sr-score">0.83</div>
+        </div>
+        <div class="sr-item">
+          <div class="sr-rank" style="background:rgba(31,111,235,0.2); color:#79c0ff;">#5</div>
+          <div class="sr-label">Graph Theory</div>
+          <div class="sr-layer">Domain</div>
+          <div class="sr-score">0.72</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Code Example ──────────────────────────────────────────────── -->
+<section id="code">
+  <div class="container">
+    <h2>Code Example</h2>
+    <p>Building the three-layer graph shown in this proposal — from scratch in C#.</p>
+
+    <div class="code-block"><pre><span class="cm">// ── Bootstrap ────────────────────────────────────────────────────</span>
+<span class="kw">var</span> embedder <span class="kw">=</span> <span class="kw">new</span> <span class="ty">LMStudioEmbedder</span> { Model <span class="kw">=</span> <span class="str">"Qwen/Qwen3-Embedding-0.6B-GGUF"</span> };
+<span class="kw">var</span> graph    <span class="kw">=</span> <span class="kw">new</span> <span class="ty">MultiLayerGraph</span>(embedder, <span class="str">"data/graph"</span>);
+
+<span class="cm">// ── Layers ───────────────────────────────────────────────────────</span>
+<span class="kw">var</span> domain  <span class="kw">=</span> graph.<span class="mt">AddLayer</span>(<span class="str">"Domain"</span>,     <span class="str">"High-level domain concepts"</span>);
+<span class="kw">var</span> tech    <span class="kw">=</span> graph.<span class="mt">AddLayer</span>(<span class="str">"Technology"</span>, <span class="str">"Concrete tools and algorithms"</span>);
+<span class="kw">var</span> docLayer<span class="kw">=</span> graph.<span class="mt">AddLayer</span>(<span class="str">"Document"</span>,   <span class="str">"Raw text documents and chunks"</span>);
+
+<span class="cm">// ── Domain nodes ─────────────────────────────────────────────────</span>
+<span class="kw">var</span> graphTheory  <span class="kw">=</span> graph.<span class="mt">AddNode</span>(domain.Id,  <span class="str">"Graph Theory"</span>,
+    <span class="str">"Mathematical study of graphs — vertices connected by edges."</span>);
+<span class="kw">var</span> vectorSearch <span class="kw">=</span> graph.<span class="mt">AddNode</span>(domain.Id,  <span class="str">"Vector Search"</span>,
+    <span class="str">"Semantic retrieval using embedding vectors and cosine similarity."</span>);
+
+<span class="cm">// ── Technology nodes ─────────────────────────────────────────────</span>
+<span class="kw">var</span> hnsw      <span class="kw">=</span> graph.<span class="mt">AddNode</span>(tech.Id, <span class="str">"HNSW Index"</span>,
+    <span class="str">"Hierarchical Navigable Small World graph for ANN search."</span>);
+<span class="kw">var</span> lmStudio  <span class="kw">=</span> graph.<span class="mt">AddNode</span>(tech.Id, <span class="str">"LM Studio Embedder"</span>,
+    <span class="str">"Local LLM inference server providing text embeddings via HTTP."</span>);
+
+<span class="cm">// ── Document nodes ───────────────────────────────────────────────</span>
+<span class="kw">var</span> docIntro  <span class="kw">=</span> graph.<span class="mt">AddNode</span>(docLayer.Id, <span class="str">"Doc: Intro to Graphs"</span>,
+    <span class="str">"An introductory article explaining graph theory concepts."</span>);
+<span class="kw">var</span> docVec    <span class="kw">=</span> graph.<span class="mt">AddNode</span>(docLayer.Id, <span class="str">"Doc: Vector Similarity"</span>,
+    <span class="str">"A technical document covering cosine similarity and ANN algorithms."</span>);
+
+<span class="cm">// ── Shared node: Graph Theory also lives in Technology layer ─────</span>
+graph.<span class="mt">PlaceNodeInLayer</span>(graphTheory.Id, tech.Id);
+
+<span class="cm">// ── Intra-layer edges ────────────────────────────────────────────</span>
+graph.<span class="mt">AddEdge</span>(graphTheory.Id,  vectorSearch.Id, <span class="str">"enables"</span>,   weight: <span class="num">0.95</span>);
+graph.<span class="mt">AddEdge</span>(hnsw.Id,         lmStudio.Id,    <span class="str">"uses"</span>,      weight: <span class="num">1.0</span>);
+graph.<span class="mt">AddEdge</span>(docIntro.Id,     docVec.Id,      <span class="str">"references"</span>,weight: <span class="num">0.9</span>);
+
+<span class="cm">// ── Inter-layer edges (domain → technology) ──────────────────────</span>
+graph.<span class="mt">AddEdge</span>(graphTheory.Id,  hnsw.Id,     <span class="str">"implemented-by"</span>, weight: <span class="num">0.85</span>);
+graph.<span class="mt">AddEdge</span>(vectorSearch.Id, lmStudio.Id, <span class="str">"powered-by"</span>,     weight: <span class="num">0.9</span>);
+
+<span class="cm">// ── Inter-layer edges (technology → document) ────────────────────</span>
+graph.<span class="mt">AddEdge</span>(hnsw.Id,     docIntro.Id, <span class="str">"documented-in"</span>, weight: <span class="num">0.75</span>);
+graph.<span class="mt">AddEdge</span>(lmStudio.Id, docVec.Id,   <span class="str">"documented-in"</span>, weight: <span class="num">0.8</span>);
+
+<span class="cm">// ── Semantic search ───────────────────────────────────────────────</span>
+<span class="kw">var</span> results <span class="kw">=</span> graph.<span class="mt">SearchNodes</span>(<span class="str">"how does vector similarity work in practice?"</span>, topK: <span class="num">5</span>);
+
+<span class="kw">foreach</span> (<span class="kw">var</span> r <span class="kw">in</span> results)
+    Console.<span class="mt">WriteLine</span>(<span class="str">$"[{r.Score:F2}] {r.Node.Label} (layers: {string.Join(", ", r.Node.LayerIds)})"</span>);
+
+<span class="cm">// ── Traversal from a search result ───────────────────────────────</span>
+<span class="kw">var</span> neighbours <span class="kw">=</span> graph.<span class="mt">GetNeighbors</span>(results[<span class="num">0</span>].Node.Id, includeInterLayer: <span class="kw">true</span>);
+<span class="kw">var</span> bfsWalk    <span class="kw">=</span> graph.<span class="mt">BreadthFirstSearch</span>(results[<span class="num">0</span>].Node.Id, maxDepth: <span class="num">3</span>);
+
+<span class="cm">// ── Persist ───────────────────────────────────────────────────────</span>
+graph.<span class="mt">Save</span>();</pre></div>
+  </div>
+</section>
+
+<!-- ── Footer ────────────────────────────────────────────────────── -->
+<footer>
+  <strong style="color:var(--text)">K1.VectorDB</strong> — Multilayer Graph proposal &nbsp;·&nbsp;
+  Generated 2026-03-05
+</footer>
+
+<!-- ── Interaction script ─────────────────────────────────────────── -->
+<script>
+(function () {
+  const tooltip  = document.getElementById('tooltip');
+  const infoPanel = document.getElementById('info-panel');
+
+  // ── Tooltip helpers ──────────────────────────────────────────────
+  function showTooltip(e, html) {
+    tooltip.innerHTML = html;
+    tooltip.classList.add('show');
+    moveTooltip(e);
+  }
+  function moveTooltip(e) {
+    const x = e.clientX + 14, y = e.clientY + 14;
+    tooltip.style.left = Math.min(x, window.innerWidth - 260) + 'px';
+    tooltip.style.top  = Math.min(y, window.innerHeight - 100) + 'px';
+  }
+  function hideTooltip() { tooltip.classList.remove('show'); }
+
+  // ── Info panel ───────────────────────────────────────────────────
+  function setInfo(title, rows, tags) {
+    const tagsHtml = tags && tags.length
+      ? '<div class="tags">' + tags.map(t => `<span class="tag">${t}</span>`).join('') + '</div>'
+      : '';
+    infoPanel.innerHTML = `<h4>${title}</h4><div class="meta">${rows}</div>${tagsHtml}`;
+  }
+
+  // ── Node interaction ─────────────────────────────────────────────
+  document.querySelectorAll('.node').forEach(node => {
+    node.style.cursor = 'pointer';
+
+    node.addEventListener('mouseenter', e => {
+      const label = node.dataset.label;
+      showTooltip(e, `<strong>${label}</strong><span>${node.dataset.content}</span>`);
+      // highlight
+      const circle = node.querySelector('circle');
+      if (circle) { circle._origStroke = circle.getAttribute('stroke-width'); circle.setAttribute('stroke-width', '3.5'); }
+    });
+
+    node.addEventListener('mousemove', moveTooltip);
+
+    node.addEventListener('mouseleave', () => {
+      hideTooltip();
+      const circle = node.querySelector('circle');
+      if (circle && circle._origStroke) circle.setAttribute('stroke-width', circle._origStroke);
+    });
+
+    node.addEventListener('click', e => {
+      e.stopPropagation();
+      const meta = node.dataset.meta ? node.dataset.meta.split(',').map(s => s.trim()) : [];
+      const tags = [
+        `layer: ${node.dataset.layer}`,
+        ...meta
+      ];
+      setInfo(
+        node.dataset.label,
+        node.dataset.content,
+        tags
+      );
+    });
+  });
+
+  // ── Edge interaction ─────────────────────────────────────────────
+  document.querySelectorAll('.edge').forEach(edge => {
+    edge.style.cursor = 'pointer';
+    const isInter = edge.classList.contains('inter-edge');
+
+    edge.addEventListener('mouseenter', e => {
+      const rel    = edge.dataset.label;
+      const weight = edge.dataset.weight;
+      const dir    = edge.dataset.directed === 'true' ? 'directed' : 'undirected';
+      showTooltip(e,
+        `<strong>${rel}</strong>` +
+        `<span>weight: ${weight} &nbsp;·&nbsp; ${dir}<br>type: ${isInter ? 'inter-layer' : 'intra-layer'}</span>`
+      );
+      edge.setAttribute('stroke-width', isInter ? '2.8' : '2.5');
+    });
+
+    edge.addEventListener('mousemove', moveTooltip);
+
+    edge.addEventListener('mouseleave', () => {
+      hideTooltip();
+      edge.setAttribute('stroke-width', '1.8');
+    });
+
+    edge.addEventListener('click', e => {
+      e.stopPropagation();
+      setInfo(
+        `Edge: "${edge.dataset.label}"`,
+        `Weight: ${edge.dataset.weight} &nbsp;·&nbsp; Directed: ${edge.dataset.directed} &nbsp;·&nbsp; Type: ${isInter ? 'inter-layer' : 'intra-layer'}`,
+        [isInter ? 'inter-layer' : 'intra-layer', `weight ${edge.dataset.weight}`, edge.dataset.directed === 'true' ? 'directed' : 'undirected']
+      );
+    });
+  });
+
+  // ── Layer group interaction ──────────────────────────────────────
+  document.querySelectorAll('.layer-group').forEach(lg => {
+    const rect = lg.querySelector('rect');
+    if (!rect) return;
+    rect.style.cursor = 'pointer';
+    rect.addEventListener('click', e => {
+      e.stopPropagation();
+      setInfo(
+        `Layer: "${lg.dataset.name}"`,
+        lg.dataset.desc,
+        [`layer-${lg.dataset.layer}`, 'VectorDb index']
+      );
+    });
+  });
+
+  // ── Click outside → reset info panel ────────────────────────────
+  document.addEventListener('click', () => {
+    infoPanel.innerHTML = '<div class="meta">Click a <strong style="color:var(--text)">node</strong> or <strong style="color:var(--text)">edge</strong> to inspect its properties.</div>';
+  });
+})();
+</script>
+</body>
+</html>
